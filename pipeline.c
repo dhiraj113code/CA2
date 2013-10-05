@@ -38,6 +38,38 @@ issue(state_t *state) {
 
 int
 dispatch(state_t *state) {
+//Input state variables - if_id
+//Output state variables - IQ, CQ, ROB
+
+int instr, ROB_tail, ROB_head, ROB_full, IQ_tail, IQ_head, IQ_full, CQ_full, ROB_index;
+unsigned long pc;
+instr = state->if_id.instr;
+pc = state->if_id.pc;
+if(FIELD_OPCODE(instr) == 0x0) return 0; //Drop the NOP instruction
+
+//Updating the Re-Order Buffer(ROB)
+ROB_tail = state->ROB_tail;
+ROB_head = state->ROB_head;
+ROB_full = FALSE;
+state->ROB[ROB_tail].instr = instr;
+if(FIELD_OPCODE(instr) == 0x3f) //HALT instruction
+   state->ROB[ROB_tail].completed = TRUE;
+else
+   state->ROB[ROB_tail].completed = FALSE;
+ROB_index = ROB_tail;
+ROB_tail = (ROB_tail + 1)%ROB_SIZE;
+state->ROB_tail = ROB_tail;
+
+//Updating the Instruction Queue(IQ)
+IQ_tail = state->IQ_tail;
+IQ_head = state->IQ_head;
+IQ_full = FALSE;
+state->IQ[IQ_tail].instr = instr;
+state->IQ[IQ_tail].pc = pc;
+state->IQ[IQ_tail].issued = FALSE;
+state->IQ[IQ_tail].ROB_index = ROB_index;
+
+//Updating the Conflict Queue(CQ)
 }
 
 
@@ -60,4 +92,6 @@ else if(machine_type == little_endian)
 }
 state->if_id.instr = instr;
 state->if_id.pc = pc;
+
+state->pc = state->pc + 4;
 }
