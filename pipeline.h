@@ -114,3 +114,8 @@ extern int memory_disambiguation(state_t *);
 extern int issue(state_t *);
 extern int dispatch(state_t *);
 extern void fetch(state_t *);
+
+//Utility functions
+extern void register_rename(int, state_t *, int);
+extern void read_int_reg(int, state_t *, int, int);
+extern void read_fp_reg(int, state_t *, int, int);
