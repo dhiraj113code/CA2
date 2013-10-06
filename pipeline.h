@@ -116,6 +116,7 @@ extern int dispatch(state_t *);
 extern void fetch(state_t *);
 
 //Utility functions
-extern void register_rename(int, state_t *, int);
-extern void read_int_reg(int, state_t *, int, int);
-extern void read_fp_reg(int, state_t *, int, int);
+extern void register_rename(int, state_t *, int, int);
+extern void read_reg(int, state_t *, int, int, int, int, int);
+extern void set_imm_operand(int , state_t *, int, int);
+extern void write_reg(int, state_t *, int, int);
