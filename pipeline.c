@@ -42,9 +42,12 @@ dispatch(state_t *state) {
 //Output state variables - IQ, CQ, ROB
 
 int instr;
-int  ROB_tail, ROB_head, ROB_full, IQ_tail, IQ_head, IQ_full, CQ_tail, CQ_head, CQ_full;
+int  ROB_tail, ROB_head, IQ_tail, IQ_head, CQ_tail, CQ_head;
 int ROB_index, IQ_index, CQ_index;
+int ROB_full = FALSE, IQ_full = FALSE, CQ_full = FALSE;
 unsigned long pc;
+int isHALT = FALSE, isNOP = FALSE, isCONTROL = FALSE, isMEMORY = FALSE;
+
 instr = state->if_id.instr;
 pc = state->if_id.pc;
 
@@ -52,52 +55,77 @@ const op_info_t *op_info;
 int use_imm;
 op_info = decode_instr(instr, &use_imm);
 
-if(FIELD_OPCODE(instr) == 0x0) return 0; //Drop the NOP instruction
 
-//Check if all of ROB, IQ and CQ have atleast one empty-slot
-//This checking should also be instruction dependent.
-//For example, an HALT instruction need not need space in IQ and CQ.
-//Similarly, a non-memory instruction needs space only in ROB and IQ.
+if(instr == 0x0) isNOP = TRUE; // NOP instruction
+else if(FIELD_OPCODE(instr) == 0x3f) isHALT = TRUE; //HALT instruction
+else if(op_info->fu_group_num == FU_GROUP_BRANCH) isCONTROL = TRUE;
+else if(op_info->fu_group_num == FU_GROUP_MEM) isMEMORY = TRUE;
 
-//Updating the Re-Order Buffer(ROB)
+if(isNOP) return 0; //Drop the NOP instruction.
+//Strangely also stalling the pipeline if a NOP comes. Not correct.
+
 ROB_tail = state->ROB_tail;
 ROB_head = state->ROB_head;
-state->ROB[ROB_tail].instr = instr;
-if(FIELD_OPCODE(instr) == 0x3f) //HALT instruction
+IQ_tail = state->IQ_tail;
+IQ_head = state->IQ_head;
+CQ_tail = state->CQ_tail;
+CQ_head = state->CQ_head;
+if( ROB_head == (ROB_tail + 1)%ROB_SIZE ) ROB_full = TRUE;
+if( IQ_head == (IQ_tail + 1)%IQ_SIZE ) IQ_full = TRUE;
+if( CQ_head == (CQ_tail + 1)%CQ_SIZE ) CQ_full = TRUE;
+
+//Stall the pipeline by not incrementing the program counter if ROB, IQ or CQ are full.
+if(ROB_full) return 0;
+if(!ROB_full && IQ_full)
 {
-   state->ROB[ROB_tail].completed = TRUE;
-   return 0;
+   if(!isHALT) return 0;
 }
-else
-   state->ROB[ROB_tail].completed = FALSE;
+if(!ROB_full && !IQ_full && CQ_full)
+{
+   if(isMEMORY) return 0;
+}
+
+//Updating the Re-Order Buffer(ROB)
 ROB_index = ROB_tail;
+state->ROB[ROB_index].instr = instr;
+if(!isHALT) state->ROB[ROB_index].completed = FALSE;
 ROB_tail = (ROB_tail + 1)%ROB_SIZE;
 state->ROB_tail = ROB_tail;
 
+if(isHALT)
+{
+   state->ROB[ROB_index].completed = TRUE;
+   state->fetch_lock = TRUE;
+   return 0; //Exit dispatch if HALT instruction
+}
+   
+
 //Updating the Instruction Queue(IQ)
-IQ_tail = state->IQ_tail;
-IQ_head = state->IQ_head;
-state->IQ[IQ_tail].instr = instr;
-state->IQ[IQ_tail].pc = pc;
-state->IQ[IQ_tail].issued = FALSE;
-state->IQ[IQ_tail].ROB_index = ROB_index;
 IQ_index = IQ_tail;
+state->IQ[IQ_index].instr = instr;
+state->IQ[IQ_index].pc = pc;
+state->IQ[IQ_index].issued = FALSE;
+state->IQ[IQ_index].ROB_index = ROB_index;
 IQ_tail = (IQ_tail + 1)%IQ_SIZE;
 state->IQ_tail = IQ_tail;
 
 //Updating the Conflict Queue(CQ)
-if(op_info->fu_group_num == FU_GROUP_MEM)
-{ 
-   CQ_tail = state->CQ_tail;
-   CQ_head = state->CQ_head;
-   state->CQ[CQ_tail].instr = instr;
-   state->CQ[CQ_tail].issued = FALSE;
-   state->CQ[CQ_tail].ROB_index = ROB_tail;
+if(isMEMORY)
+{
    CQ_index = CQ_tail;
+   state->CQ[CQ_index].instr = instr;
+   state->CQ[CQ_index].issued = FALSE;
+   state->CQ[CQ_index].ROB_index = ROB_index;
    CQ_tail = (CQ_tail + 1)%CQ_SIZE;
    state->CQ_tail = CQ_tail;
 }
+
 register_rename(instr, state, IQ_index, CQ_index);
+
+if(isCONTROL)
+   state->fetch_lock = TRUE;
+else
+   state->pc = pc + 4;
 }
 
 
@@ -120,8 +148,6 @@ else if(machine_type == little_endian)
 }
 state->if_id.instr = instr;
 state->if_id.pc = pc;
-
-state->pc = state->pc + 4;
 }
 
 
@@ -202,6 +228,7 @@ case FU_GROUP_MEM:
    {
    case OPERATION_LOAD:
       rd = FIELD_R2(instr);
+      state->CQ[CQ_index].tag2 = -1; //Set second operand in CQ to always ready for LOAD
       switch(op_info->data_type)
       {
       case DATA_TYPE_W:
