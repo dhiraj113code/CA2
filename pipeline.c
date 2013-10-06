@@ -38,8 +38,9 @@ issue(state_t *state) {
 
 int
 dispatch(state_t *state) {
-//Input state variables - if_id
-//Output state variables - IQ, CQ, ROB
+//Strictly Input state variables - if_id
+//Both Input and Output state variables :  IQ, CQ, ROB, rf_int, rf_fp
+//Strictly Output state variables - pc 
 
 int instr;
 int  ROB_tail, ROB_head, IQ_tail, IQ_head, CQ_tail, CQ_head;
