@@ -23,13 +23,16 @@ writeback(state_t *state) {
 
 void
 execute(state_t *state) {
-//Need to advance the pipestages to figure out what is happening in issue
+//Advancing functional units by one stage
+advance_fu_int(state->fu_int_list, state->wb_port_int, state->wb_port_int_num, &state->branch_tag);
+advance_fu_fp(state->fu_add_list, state->wb_port_fp, state->wb_port_fp_num);
+advance_fu_fp(state->fu_mult_list, state->wb_port_fp, state->wb_port_fp_num);
+advance_fu_fp(state->fu_div_list, state->wb_port_fp, state->wb_port_fp_num);
 }
 
 
 int
 memory_disambiguation(state_t *state) {
-//Even the memory instructions need to issue soo too.
 }
 
 
@@ -41,7 +44,7 @@ int IQ_head, IQ_tail, IQ_curr;
 IQ_head = state->IQ_head;
 IQ_tail = state->IQ_tail;
 IQ_curr = IQ_head;
-//Issuing first ready, not yet issued and functional units available instruction
+
 while(IQ_curr != IQ_tail)
 {
    if(!(state->IQ[IQ_curr].issued) && state->IQ[IQ_curr].tag1 == -1 && state->IQ[IQ_curr].tag2 == -1)
