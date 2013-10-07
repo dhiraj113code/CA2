@@ -397,17 +397,30 @@ const op_info_t *op_info;
 int use_imm;
 op_info = decode_instr(instr, &use_imm);
 
-//Don't know for sure
 int tag = state->IQ[IQ_entry].ROB_index;
-int branch = FALSE;
-int link = FALSE;
+int isbranch = FALSE, islink = FALSE;
 
 switch(op_info->fu_group_num)
 {
 case FU_GROUP_INT:
 case FU_GROUP_MEM:
+   isbranch = FALSE;
+   islink = FALSE;
+   if(issue_fu_int(state->fu_int_list, tag, isbranch, islink) != -1) return 0;
+   break;
 case FU_GROUP_BRANCH:
-   if(issue_fu_int(state->fu_int_list, tag, branch, link) != -1) return 0;
+   isbranch = TRUE;
+   switch(op_info->operation)
+   {
+   case OPERATION_JAL:
+   case OPERATION_JALR:
+      islink = TRUE;
+      break;
+   default:
+      islink = FALSE;
+      break;
+   }
+   if(issue_fu_int(state->fu_int_list, tag, isbranch, islink) != -1) return 0;
    break;
 case FU_GROUP_ADD:
    if(issue_fu_fp(state->fu_add_list, tag) != -1) return 0;
