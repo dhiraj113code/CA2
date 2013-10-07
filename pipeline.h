@@ -120,3 +120,4 @@ extern void register_rename(int, state_t *, int, int);
 extern void read_reg(int, state_t *, int, int, int, int, int);
 extern void set_imm_operand(int , state_t *, int, int);
 extern void write_reg(int, state_t *, int, int);
+extern int issue_instr(int, state_t *);

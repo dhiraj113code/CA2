@@ -23,16 +23,50 @@ writeback(state_t *state) {
 
 void
 execute(state_t *state) {
+//Need to advance the pipestages to figure out what is happening in issue
 }
 
 
 int
 memory_disambiguation(state_t *state) {
+//Even the memory instructions need to issue soo too.
 }
 
 
 int
 issue(state_t *state) {
+//Input state variables - IQ
+//Output state variables - fu_int_list, fu_add_list, fu_mult_div, fu_div_list
+int IQ_head, IQ_tail, IQ_curr;
+IQ_head = state->IQ_head;
+IQ_tail = state->IQ_tail;
+IQ_curr = IQ_head;
+//Issuing first ready, not yet issued and functional units available instruction
+while(IQ_curr != IQ_tail)
+{
+   if(!(state->IQ[IQ_curr].issued) && state->IQ[IQ_curr].tag1 == -1 && state->IQ[IQ_curr].tag2 == -1)
+   {
+      //Check and issue the instruction if it can be issued
+      if(issue_instr(IQ_curr, state) != -1)
+      {
+         state->IQ[IQ_curr].issued = TRUE;
+         break;
+      }
+      else
+         IQ_curr = (IQ_curr + 1)%IQ_SIZE;   
+   }
+   else
+      IQ_curr = (IQ_curr + 1)%IQ_SIZE;
+}
+//Removing issued instructions from the top of IQ
+while(IQ_head != IQ_tail)
+{
+   if(!(state->IQ[IQ_curr].issued))
+      break;
+   else
+      IQ_head = (IQ_head + 1)%IQ_SIZE;
+}
+state->IQ_head = IQ_head;
 }
 
 
@@ -123,10 +157,7 @@ if(isMEMORY)
 
 register_rename(instr, state, IQ_index, CQ_index);
 
-if(isCONTROL)
-   state->fetch_lock = TRUE;
-else
-   state->pc = pc + 4;
+if(isCONTROL) state->fetch_lock = TRUE;
 }
 
 
@@ -149,6 +180,8 @@ else if(machine_type == little_endian)
 }
 state->if_id.instr = instr;
 state->if_id.pc = pc;
+
+state->pc = pc + 4;
 }
 
 
@@ -351,4 +384,43 @@ else
 {
    state->rf_fp.tag[r] = ROB_index;
 }
+}
+
+
+int issue_instr(int IQ_entry, state_t *state)
+{
+//To this function : IQ buffer entry is read_only
+
+int instr = state->IQ[IQ_entry].instr;
+unsigned long pc = state->IQ[IQ_entry].pc;
+const op_info_t *op_info;
+int use_imm;
+op_info = decode_instr(instr, &use_imm);
+
+//Don't know for sure
+int tag = state->IQ[IQ_entry].ROB_index;
+int branch = FALSE;
+int link = FALSE;
+
+switch(op_info->fu_group_num)
+{
+case FU_GROUP_INT:
+case FU_GROUP_MEM:
+case FU_GROUP_BRANCH:
+   if(issue_fu_int(state->fu_int_list, tag, branch, link) != -1) return 0;
+   break;
+case FU_GROUP_ADD:
+   if(issue_fu_fp(state->fu_add_list, tag) != -1) return 0;
+   break;
+case FU_GROUP_MULT:
+   if(issue_fu_fp(state->fu_mult_list, tag) != -1) return 0;
+   break;
+case FU_GROUP_DIV:
+   if(issue_fu_fp(state->fu_div_list, tag) != -1) return 0;
+   break;
+default:
+   printf("error_info : Instruction group is not one among INT, MEM, BRANCH, ADD, MUL, DIV in issue stage\n");
+   break;
+}
+return -1;
 }
