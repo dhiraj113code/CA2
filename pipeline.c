@@ -50,6 +50,7 @@ while(IQ_curr != IQ_tail)
       if(issue_instr(IQ_curr, state) != -1)
       {
          state->IQ[IQ_curr].issued = TRUE;
+         func_exec(IQ_curr, state);
          break;
       }
       else
@@ -97,7 +98,6 @@ else if(op_info->fu_group_num == FU_GROUP_BRANCH) isCONTROL = TRUE;
 else if(op_info->fu_group_num == FU_GROUP_MEM) isMEMORY = TRUE;
 
 if(isNOP) return 0; //Drop the NOP instruction.
-//Strangely also stalling the pipeline if a NOP comes. Not correct.
 
 ROB_tail = state->ROB_tail;
 ROB_head = state->ROB_head;
@@ -109,7 +109,8 @@ if( ROB_head == (ROB_tail + 1)%ROB_SIZE ) ROB_full = TRUE;
 if( IQ_head == (IQ_tail + 1)%IQ_SIZE ) IQ_full = TRUE;
 if( CQ_head == (CQ_tail + 1)%CQ_SIZE ) CQ_full = TRUE;
 
-//Stall the pipeline by not incrementing the program counter if ROB, IQ or CQ are full.
+//Need to stall the pipeline if ROB, IQ or CQ are full.
+//This is no longer happening.
 if(ROB_full) return 0;
 if(!ROB_full && IQ_full)
 {
@@ -436,4 +437,118 @@ default:
    break;
 }
 return -1;
+}
+
+
+void func_exec(int IQ_entry, state_t *state)
+{
+int instr = state->IQ[IQ_entry].instr;
+const op_info_t *op_info;
+int use_imm;
+op_info = decode_instr(instr, &use_imm);
+
+operand_t operand1, operand2, *result, *target;
+unsigned long pc = state->IQ[IQ_entry].pc;
+int ROB_index = state->IQ[IQ_entry].ROB_index; 
+operand1 = state->IQ[IQ_entry].operand1;
+operand2 = state->IQ[IQ_entry].operand2;
+result = &state->ROB[ROB_index].result;
+target = &state->ROB[ROB_index].target;
+
+int offset = FIELD_OFFSET(instr); 
+
+switch(op_info->fu_group_num)
+{
+case FU_GROUP_INT:
+  switch(op_info->operation)
+  {
+  case OPERATION_ADD:
+     (*result).integer.w = operand1.integer.w + operand2.integer.w;
+     break; 
+  case OPERATION_ADDU:
+     (*result).integer.wu = operand1.integer.wu + operand2.integer.wu;
+     break;
+  case OPERATION_SUB:
+     (*result).integer.w = operand1.integer.w - operand2.integer.w;
+     break;
+  case OPERATION_SUBU:
+     (*result).integer.wu = operand1.integer.wu - operand2.integer.wu;
+     break;
+  case OPERATION_SLL:
+     (*result).integer.w = operand1.integer.wu <<  operand2.integer.w;
+     break;
+  case OPERATION_SRL:
+     (*result).integer.w = operand1.integer.w >> operand2.integer.w;
+     break;
+  case OPERATION_AND:
+     (*result).integer.w = operand1.integer.w & operand2.integer.w;
+     break;
+  case OPERATION_OR:
+     (*result).integer.w = operand1.integer.w | operand2.integer.w;
+     break;
+  case OPERATION_XOR:
+     (*result).integer.w = operand1.integer.w ^ operand2.integer.w;
+     break;
+  case OPERATION_SLT:
+     (*result).integer.w = (operand1.integer.w < operand2.integer.w) ? TRUE : FALSE;
+  case OPERATION_SLTU:
+     (*result).integer.wu = (operand1.integer.wu < operand2.integer.wu) ? TRUE : FALSE;
+     break;
+  case OPERATION_SGT:
+     (*result).integer.w = (operand1.integer.w > operand2.integer.w) ? TRUE : FALSE;
+  case OPERATION_SGTU:
+     (*result).integer.wu = (operand1.integer.wu > operand2.integer.wu) ? TRUE : FALSE;
+     break;
+  default:
+     printf("error_info : unknown operation type in fu_group_int during functional execution\n");
+     break;
+  }
+  break;
+case FU_GROUP_ADD:
+  (*result).flt = operand1.flt + operand2.flt;
+  break;
+case FU_GROUP_MULT:
+  (*result).flt = operand1.flt * operand2.flt;
+  break;
+case FU_GROUP_DIV:
+  (*result).flt = operand1.flt / operand2.flt;
+  break;
+case FU_GROUP_MEM:
+  (*target).integer.w = operand1.integer.w + operand2.integer.w;
+  break;
+case FU_GROUP_BRANCH:
+  switch(op_info->operation)
+  {
+     case OPERATION_J:
+        (*result).integer.w = TRUE;
+        (*target).integer.w = pc + offset + 4;
+        break;
+     case OPERATION_JR:
+        (*result).integer.w = TRUE;
+        (*target).integer.w = operand1.integer.w;
+        break;
+     case OPERATION_JAL:
+        (*result).integer.w = TRUE;
+        (*target).integer.w = pc + offset + 4;
+        //What about storing the value of pc in r31
+        break;
+     case OPERATION_JALR:
+        (*result).integer.w = TRUE;
+        (*target).integer.w = operand1.integer.w;
+        //What about storing the value of pc in r31.
+        break;
+     case OPERATION_BEQZ:
+        (*result).integer.w = (operand1.integer.w == 0) ? TRUE : FALSE;
+        (*target).integer.w = (operand1.integer.w == 0) ? pc + operand2.integer.w + 4 : pc + 4;
+        break;
+     case OPERATION_BNEZ:
+        (*result).integer.w = (operand1.integer.w != 0) ? TRUE : FALSE;
+        (*target).integer.w = (operand1.integer.w != 0) ? pc + operand2.integer.w + 4 : pc + 4;
+        break;
+  }
+  break;
+default :
+  printf("error_info : Does not belong to one among FU_INT, ADD, MULT, DIV, BRANCH, MEM groups in function execution\n");
+  break;
+}
 }
