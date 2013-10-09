@@ -51,11 +51,67 @@ advance_fu_int(state->fu_int_list, state->wb_port_int, state->wb_port_int_num, &
 advance_fu_fp(state->fu_add_list, state->wb_port_fp, state->wb_port_fp_num);
 advance_fu_fp(state->fu_mult_list, state->wb_port_fp, state->wb_port_fp_num);
 advance_fu_fp(state->fu_div_list, state->wb_port_fp, state->wb_port_fp_num);
+advance_fu_mem(state->fu_mem_list, state->wb_port_int, state->wb_port_int_num, state->wb_port_fp, state->wb_port_fp_num); 
 }
 
 
 int
 memory_disambiguation(state_t *state) {
+int CQ_head, CQ_tail, CQ_curr;
+CQ_head = state->CQ_head;
+CQ_tail = state->CQ_tail;
+CQ_curr = state->CQ_head;
+while(CQ_curr != CQ_tail)
+{
+   if(!state->CQ[CQ_curr].issued)
+   {
+      if(state->CQ[CQ_curr].store)
+      {
+         if(state->CQ[CQ_curr].tag1 == -1)
+         {
+            if(state->CQ[CQ_curr].tag2 == -1)
+            {
+               //Issue the store memory operation. 
+               break;
+            }
+         }
+         else
+            break; //Cannot issue
+      }
+      else
+      {
+         if(state->CQ[CQ_curr].tag1 == -1)
+         {
+            //Try memory disambugation
+            if(disambigaute_mem(state, CQ_curr, CQ_head))
+            {
+               if(DEBUG) printf("debug_info : Able to sucessfully disambiguate memory for CQ_entry = %d\n", CQ_curr);
+               //Issue the Load instruction after checking for available memory units
+               if(issue_mem_instr(CQ_curr, state) != -1)
+               {
+                  state->CQ[CQ_curr].issued = TRUE;
+                  if(DEBUG) printf("debug_info : Successfully issued a Load instruction for CQ_entry = %d\n", CQ_curr);
+                  break;
+               }
+               else
+                  if(DEBUG) printf("debug_info : Unable to issue Load instr bcos structural hazard for CQ_entry = %d\n", CQ_curr);
+            }
+            else
+               if(DEBUG) printf("debug_info : Memory disambiguation failed for CQ_entry = %d\n", CQ_curr);
+         }
+      }
+   }
+   CQ_curr++;
+}
+//Removing issued instructions from the top of CQ
+while(CQ_head != CQ_tail)
+{
+   if(!(state->CQ[CQ_head].issued))
+      break;
+   else
+      CQ_head = (CQ_head + 1)%CQ_SIZE;
+}
+state->CQ_head = CQ_head;
 }
 
 
@@ -88,7 +144,7 @@ while(IQ_curr != IQ_tail)
 //Removing issued instructions from the top of IQ
 while(IQ_head != IQ_tail)
 {
-   if(!(state->IQ[IQ_curr].issued))
+   if(!(state->IQ[IQ_head].issued))
       break;
    else
       IQ_head = (IQ_head + 1)%IQ_SIZE;
@@ -108,7 +164,7 @@ int  ROB_tail, ROB_head, IQ_tail, IQ_head, CQ_tail, CQ_head;
 int ROB_index, IQ_index, CQ_index;
 int ROB_full = FALSE, IQ_full = FALSE, CQ_full = FALSE;
 unsigned long pc;
-int isHALT = FALSE, isNOP = FALSE, isCONTROL = FALSE, isMEMORY = FALSE;
+int isHALT = FALSE, isNOP = FALSE, isCONTROL = FALSE, isMEMORY = FALSE, isSTORE = FALSE;
 
 instr = state->if_id.instr;
 pc = state->if_id.pc;
@@ -121,7 +177,11 @@ op_info = decode_instr(instr, &use_imm);
 if(instr == 0x0) isNOP = TRUE; // NOP instruction
 else if(FIELD_OPCODE(instr) == 0x3f) isHALT = TRUE; //HALT instruction
 else if(op_info->fu_group_num == FU_GROUP_BRANCH) isCONTROL = TRUE;
-else if(op_info->fu_group_num == FU_GROUP_MEM) isMEMORY = TRUE;
+else if(op_info->fu_group_num == FU_GROUP_MEM)
+{
+   isMEMORY = TRUE;
+   if(op_info->operation == OPERATION_STORE) isSTORE = TRUE;
+}
 
 if(isNOP) return 0; //Drop the NOP instruction.
 
@@ -178,6 +238,7 @@ if(isMEMORY)
    state->CQ[CQ_index].instr = instr;
    state->CQ[CQ_index].issued = FALSE;
    state->CQ[CQ_index].ROB_index = ROB_index;
+   state->CQ[CQ_index].store = isSTORE ? TRUE : FALSE;
    CQ_tail = (CQ_tail + 1)%CQ_SIZE;
    state->CQ_tail = CQ_tail;
 }
@@ -623,12 +684,49 @@ else
     ROB_index = tag - ROB_SIZE;
     for(i = 0; i < CQ_SIZE; i++)
     {
-       if(state->CQ[i].ROB_index = tag)
+       if(state->CQ[i].ROB_index == ROB_index)
        {
+          if(DEBUG) printf("debug_info : CQ entry which matchces the tag = %d is i = %d\n", tag, i);
           state->CQ[i].tag1 = -1;
           state->CQ[i].address = state->ROB[ROB_index].target;
           break;
        }
     }
 }
+}
+
+int disambigaute_mem(state_t *state, int CQ_curr, int CQ_head)
+{
+int i;
+for(i = CQ_head; i < CQ_curr; i++)
+{
+   if(state->CQ[i].store && !(state->CQ[i].issued))
+   {
+      if(state->CQ[i].tag1 != -1) printf("error_info : tyring disambiguating a store without address");
+      if(state->CQ[i].address.integer.w == state->CQ[CQ_curr].address.integer.w)
+         return FALSE;
+   }
+   i++;
+}
+return TRUE;
+}
+
+
+int issue_mem_instr(int CQ_index, state_t *state)
+{
+int ROB_index, isStore = FALSE, isFloatMem = FALSE;
+int instr, use_imm;
+const op_info_t *op_info;
+instr = state->CQ[CQ_index].instr;
+op_info = decode_instr(instr, &use_imm);
+
+ROB_index = state->CQ[CQ_index].ROB_index;
+isStore = state->CQ[CQ_index].store;
+isFloatMem = (op_info->data_type == DATA_TYPE_F) ? TRUE : FALSE;
+//int tag = ROB_index - ROB_SIZE; //bullshit
+//Issue the Load instruction after checking for available memory units
+if(issue_fu_mem(state->fu_mem_list, ROB_index, isFloatMem, isStore) != -1)
+   return 0;
+else
+   return -1;
 }

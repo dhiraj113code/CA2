@@ -8,7 +8,7 @@
 
 #define TRUE 1
 #define FALSE 0
-
+#define DEBUG 0
 
 /* fetch/decode pipeline register */
 typedef struct _if_id_t {
@@ -123,3 +123,5 @@ extern void write_reg(int, state_t *, int, int);
 extern int issue_instr(int, state_t *);
 extern void func_exec(int, state_t *);
 extern void register_writeback(state_t *, int);
+extern int disambigaute_mem(state_t *state, int CQ_curr, int CQ_head);
+extern int issue_mem_instr(int, state_t *);
