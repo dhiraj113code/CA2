@@ -8,6 +8,9 @@
 
 #define TRUE 1
 #define FALSE 0
+#define BIG_ENDIAN_MACHINE 1
+#define LITTLE_ENDIAN_MACHINE 0
+#define MACHINE_TYPE LITTLE_ENDIAN_MACHINE
 #define DEBUG 0
 
 /* fetch/decode pipeline register */
@@ -125,3 +128,5 @@ extern void func_exec(int, state_t *);
 extern void register_writeback(state_t *, int);
 extern int disambigaute_mem(state_t *state, int CQ_curr, int CQ_head);
 extern int issue_mem_instr(int, state_t *);
+extern void func_mem_exec(int, state_t *);
+extern int memory_fetch_int(unsigned long, state_t *) ;

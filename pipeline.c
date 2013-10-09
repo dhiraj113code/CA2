@@ -82,15 +82,12 @@ while(CQ_curr != CQ_tail)
       {
          if(state->CQ[CQ_curr].tag1 == -1)
          {
-            //Try memory disambugation
             if(disambigaute_mem(state, CQ_curr, CQ_head))
             {
-               if(DEBUG) printf("debug_info : Able to sucessfully disambiguate memory for CQ_entry = %d\n", CQ_curr);
-               //Issue the Load instruction after checking for available memory units
                if(issue_mem_instr(CQ_curr, state) != -1)
                {
                   state->CQ[CQ_curr].issued = TRUE;
-                  if(DEBUG) printf("debug_info : Successfully issued a Load instruction for CQ_entry = %d\n", CQ_curr);
+                  func_mem_exec(CQ_curr, state);
                   break;
                }
                else
@@ -256,19 +253,10 @@ fetch(state_t *state) {
 
 unsigned long pc = state->pc;
 int i, instr;
-int machine_type, big_endian = 1, little_endian = 0;
-machine_type = little_endian;
-if(machine_type == big_endian)
-{
-   instr = (state->mem[pc] << 24) | (state->mem[pc+1] << 16) | (state->mem[pc+2] << 8) | (state->mem[pc+3]);
-}
-else if(machine_type == little_endian)
-{
-   instr = (state->mem[pc]) | (state->mem[pc+1] << 8) | (state->mem[pc+2] << 16) | (state->mem[pc+3] << 24);
-}
+int machine_type = LITTLE_ENDIAN_MACHINE;
+instr = memory_fetch_int(pc, state);
 state->if_id.instr = instr;
 state->if_id.pc = pc;
-
 state->pc = pc + 4;
 }
 
@@ -730,3 +718,59 @@ if(issue_fu_mem(state->fu_mem_list, ROB_index, isFloatMem, isStore) != -1)
 else
    return -1;
 }
+
+
+void func_mem_exec(int CQ_entry, state_t *state)
+{
+int instr = state->CQ[CQ_entry].instr;
+const op_info_t *op_info;
+int use_imm;
+op_info = decode_instr(instr, &use_imm);
+
+int ROB_index = state->CQ[CQ_entry].ROB_index;
+int rd = FIELD_R2(instr);
+int address = state->CQ[CQ_entry].address.integer.w;
+//address = state->ROB[ROB_index].target.integer.w;
+
+switch(op_info->operation)
+{
+case OPERATION_LOAD:
+   switch(op_info->data_type)
+   {
+   case DATA_TYPE_W:
+      //Go and check if any issued store is present in the reorder buffer before going to memory to fetch
+      state->ROB[ROB_index].result.integer.w = memory_fetch_int(address, state); 
+      break;
+   case DATA_TYPE_F:
+      break;
+   }
+   break;
+   
+case OPERATION_STORE:
+   switch(op_info->data_type)
+   {
+   case DATA_TYPE_W:
+      state->ROB[ROB_index].result = state->CQ[CQ_entry].result;
+      break;
+   case DATA_TYPE_F:
+      break;
+   }
+   break;
+}
+}
+
+
+int memory_fetch_int(unsigned long pc, state_t *state)
+{
+int data; 
+if(MACHINE_TYPE == BIG_ENDIAN_MACHINE)
+{
+   data = (state->mem[pc] << 24) | (state->mem[pc+1] << 16) | (state->mem[pc+2] << 8) | (state->mem[pc+3]);
+}
+else if(MACHINE_TYPE == LITTLE_ENDIAN_MACHINE)
+{
+   data = (state->mem[pc]) | (state->mem[pc+1] << 8) | (state->mem[pc+2] << 16) | (state->mem[pc+3] << 24);
+}
+return data;
+}
+
