@@ -71,7 +71,9 @@ while(CQ_curr != CQ_tail)
          {
             if(state->CQ[CQ_curr].tag2 == -1)
             {
-               //Issue the store memory operation. 
+               //Issue the store memory operation.
+               state->CQ[CQ_curr].issued = TRUE;
+               func_mem_exec(CQ_curr, state); 
                break;
             }
          }
@@ -480,6 +482,10 @@ int isbranch = FALSE, islink = FALSE;
 switch(op_info->fu_group_num)
 {
 case FU_GROUP_INT:
+   isbranch = FALSE;
+   islink = FALSE;
+   if(issue_fu_int(state->fu_int_list, tag, isbranch, islink) != -1) return 0;
+   break;
 case FU_GROUP_MEM:
    tag = tag + ROB_SIZE; //bullshit
    isbranch = FALSE;
