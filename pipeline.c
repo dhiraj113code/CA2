@@ -729,13 +729,15 @@ else
 void func_mem_exec(int CQ_entry, state_t *state)
 {
 int instr = state->CQ[CQ_entry].instr;
-const op_info_t *op_info;
+const op_info_t *op_info, *local_op_info;
 int use_imm;
 op_info = decode_instr(instr, &use_imm);
 
 int ROB_index = state->CQ[CQ_entry].ROB_index;
 int rd = FIELD_R2(instr);
 int address = state->CQ[CQ_entry].address.integer.w;
+int i, local_instr, local_use_imm, search = FALSE;
+
 //address = state->ROB[ROB_index].target.integer.w;
 
 switch(op_info->operation)
@@ -745,7 +747,25 @@ case OPERATION_LOAD:
    {
    case DATA_TYPE_W:
       //Go and check if any issued store is present in the reorder buffer before going to memory to fetch
-      state->ROB[ROB_index].result.integer.w = memory_fetch_int(address, state); 
+      for(i = 0; i < ROB_index; i++)
+      {
+         local_op_info = decode_instr(local_instr, &local_use_imm);
+         if(local_op_info->operation == OPERATION_STORE)
+         {
+            if(state->ROB[i].completed)
+            {
+               if(state->ROB[i].target.integer.w == address)
+               {
+                  search = TRUE;
+                  state->ROB[ROB_index].result = state->ROB[i].result;
+               }
+                
+            }
+            else
+               printf("error_info : Load executing before a prior incomplete store\n"); 
+         }
+      }
+      if(!search) state->ROB[ROB_index].result.integer.w = memory_fetch_int(address, state); 
       break;
    case DATA_TYPE_F:
       break;
