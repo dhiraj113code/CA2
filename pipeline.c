@@ -18,6 +18,29 @@ commit(state_t *state) {
 
 void
 writeback(state_t *state) {
+int i, tag;
+//Integer writeback
+for(i = 0; i < state->wb_port_int_num; i++)
+{
+   tag = state->wb_port_int[i].tag;
+   if(tag != -1)
+   {
+      //Perform Writeback
+      register_writeback(state, tag);
+      state->wb_port_int[i].tag = -1; //Freeing wbport
+   }
+}
+//Floating point writeback
+for(i = 0; i < state->wb_port_fp_num; i++)
+{
+   tag = state->wb_port_fp[i].tag;
+   if(tag != -1)
+   {
+      //Perform Writeback
+      register_writeback(state, tag);
+      state->wb_port_fp[i].tag = -1; 
+   }
+}
 }
 
 
@@ -196,6 +219,7 @@ int use_imm;
 op_info = decode_instr(instr, &use_imm);
 
 int r1, r2, rd, imm;
+int ROB_index = state->IQ[IQ_index].ROB_index;;
 switch(op_info->fu_group_num)
 {
 case FU_GROUP_INT:
@@ -261,7 +285,7 @@ case FU_GROUP_MEM:
    read_reg(r1, state, IQ_index, CQ_index, TRUE, TRUE, 1);
    set_imm_operand(imm, state, IQ_index, 2);
    //setting the Conflict Queue(CQ) tag
-   state->CQ[CQ_index].tag1 = IQ_index; 
+   state->CQ[CQ_index].tag1 = ROB_index + ROB_SIZE; //bullshit
    switch(op_info->operation)
    {
    case OPERATION_LOAD:
@@ -408,6 +432,7 @@ switch(op_info->fu_group_num)
 {
 case FU_GROUP_INT:
 case FU_GROUP_MEM:
+   tag = tag + ROB_SIZE; //bullshit
    isbranch = FALSE;
    islink = FALSE;
    if(issue_fu_int(state->fu_int_list, tag, isbranch, islink) != -1) return 0;
@@ -553,5 +578,57 @@ case FU_GROUP_BRANCH:
 default :
   printf("error_info : Does not belong to one among FU_INT, ADD, MULT, DIV, BRANCH, MEM groups in function execution\n");
   break;
+}
+}
+
+
+void register_writeback(state_t *state, int tag)
+{
+if( tag < 0 ) printf("error_info : register_writeback called with tag < 0  or tag > 64\n");
+
+int i, ROB_index;
+
+if(tag < ROB_SIZE)
+{
+   //Writing to ROB
+   state->ROB[tag].completed = TRUE;
+
+   //Forwarding the results to IQ and CQ
+   for(i = 0; i < IQ_SIZE; i++)
+   {
+      if(state->IQ[i].tag1 == tag)
+      {
+         state->IQ[i].tag1 = -1;
+         state->IQ[i].operand1 = state->ROB[tag].result;
+         
+      }
+      if(state->IQ[i].tag2 == tag)
+      {
+         state->IQ[i].tag2 = -1;
+         state->IQ[i].operand2 = state->ROB[tag].result;
+      }
+   }
+   for(i = 0; i < CQ_SIZE; i++)
+   {
+      if(state->CQ[i].tag2 == tag)
+      {
+         state->CQ[i].tag2 = -1;
+         state->CQ[i].result = state->ROB[tag].result;
+      }
+   }
+}
+else
+{
+    //Writing the results to CQ operand 1
+    ROB_index = tag - ROB_SIZE;
+    for(i = 0; i < CQ_SIZE; i++)
+    {
+       if(state->CQ[i].ROB_index = tag)
+       {
+          state->CQ[i].tag1 = -1;
+          state->CQ[i].address = state->ROB[ROB_index].target;
+          break;
+       }
+    }
 }
 }

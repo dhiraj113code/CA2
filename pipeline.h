@@ -122,3 +122,4 @@ extern void set_imm_operand(int , state_t *, int, int);
 extern void write_reg(int, state_t *, int, int);
 extern int issue_instr(int, state_t *);
 extern void func_exec(int, state_t *);
+extern void register_writeback(state_t *, int);
