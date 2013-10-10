@@ -13,6 +13,48 @@
 
 int
 commit(state_t *state) {
+int ROB_head, instr;
+ROB_head = state->ROB_head;
+const op_info_t *op_info;
+int use_imm, isFloatMem = FALSE, commitThisCycle = TRUE;
+
+//Examine the ROB head for completion
+if(!state->ROB[ROB_head].completed)
+{
+   return 0;
+}
+else
+{
+   instr = state->ROB[ROB_head].instr;
+   if(FIELD_OPCODE(instr) == 0x3f)
+      return -1; //Return -1 to signal the end of simulation
+
+   commitThisCycle = TRUE; 
+   op_info = decode_instr(instr, &use_imm);
+   if(op_info->operation == OPERATION_STORE)
+   {
+      isFloatMem = (op_info->data_type == DATA_TYPE_F) ? TRUE : FALSE;
+      if(issue_fu_mem(state->fu_mem_list, ROB_head, isFloatMem, TRUE) != -1)
+      {
+         commitThisCycle = TRUE;
+         if(DEBUG) printf("debug_info : Store issued into fu_mem in commit stage");
+      }
+      else
+      {
+         commitThisCycle = FALSE;
+         return 0;
+      }
+   }
+
+   if(commitThisCycle)
+   {
+      write_regfile(ROB_head, state);
+      ROB_head = (ROB_head + 1)%ROB_SIZE;
+      state->ROB_head = ROB_head;
+      return 1;
+   }
+}
+printf("error_info : commit not returning as expected\n");
 }
 
 
@@ -57,7 +99,7 @@ advance_fu_mem(state->fu_mem_list, state->wb_port_int, state->wb_port_int_num, s
 
 int
 memory_disambiguation(state_t *state) {
-int CQ_head, CQ_tail, CQ_curr;
+int CQ_head, CQ_tail, CQ_curr, ROB_index;
 CQ_head = state->CQ_head;
 CQ_tail = state->CQ_tail;
 CQ_curr = state->CQ_head;
@@ -73,6 +115,8 @@ while(CQ_curr != CQ_tail)
             {
                //Issue the store memory operation.
                state->CQ[CQ_curr].issued = TRUE;
+               ROB_index = state->CQ[CQ_curr].ROB_index;
+               state->ROB[ROB_index].completed = TRUE; //bcos stores complete in the same cycle as they are issued.
                func_mem_exec(CQ_curr, state); 
                break;
             }
@@ -798,5 +842,62 @@ else if(MACHINE_TYPE == LITTLE_ENDIAN_MACHINE)
    data = (state->mem[pc]) | (state->mem[pc+1] << 8) | (state->mem[pc+2] << 16) | (state->mem[pc+3] << 24);
 }
 return data;
+}
+
+
+void write_regfile(int ROB_entry, state_t *state)
+{
+int instr = state->ROB[ROB_entry].instr;
+const op_info_t *op_info;
+int use_imm, rd, isINT;
+op_info = decode_instr(instr, &use_imm);
+operand_t result = state->ROB[ROB_entry].result;
+switch(op_info->fu_group_num)
+{
+case FU_GROUP_INT:
+   rd = use_imm ? FIELD_R2(instr) : FIELD_R3(instr);
+   update_reg(rd, ROB_entry, result, state, TRUE);
+   break;
+case FU_GROUP_ADD:
+case FU_GROUP_MULT:
+case FU_GROUP_DIV:
+  rd = FIELD_R3(instr);
+  update_reg(rd, ROB_entry, result, state, FALSE);
+  break;
+case FU_GROUP_MEM:
+  if(op_info->operation == OPERATION_LOAD)
+  {
+     rd = FIELD_R2(instr);
+     isINT = (op_info->data_type == DATA_TYPE_W) ? TRUE : FALSE;
+     update_reg(rd, ROB_entry, result, state, isINT);
+  }
+  break;
+case FU_GROUP_BRANCH:
+  if(op_info->operation == OPERATION_JAL || op_info->operation == OPERATION_JALR)
+  {
+     rd = 31;
+     //What about storing the value of pc in r31.
+  } 
+  break;
+}
+return;
+}
+
+
+void update_reg(int rd, int ROB_entry, operand_t result,  state_t *state, int isINT)
+{
+if(isINT)
+{
+   state->rf_int.reg_int.integer[rd].w = result.integer.w; //Writing to integer register file
+   if(state->rf_int.tag[rd] == ROB_entry)
+      state->rf_int.tag[rd] = -1; //Register is ready
+}
+else
+{
+   state->rf_fp.reg_fp.flt[rd] = result.flt; //Writing to floating point register file
+   if(state->rf_fp.tag[rd] == ROB_entry)
+     state->rf_fp.tag[rd] = -1; //Register is ready
+}
+return ;
 }
 

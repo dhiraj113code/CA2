@@ -36,6 +36,7 @@ main(int argc, char *argv[]) {
   int data_count;
   int commit_ret, dispatch_ret;
   int num_insn, i;
+  int commit_status;
 
   parse_args(argc, argv);
   state = state_create(&data_count, bin_file, fu_file, wbpi, wbpf);
@@ -54,8 +55,10 @@ main(int argc, char *argv[]) {
 
     printf("\n\n*** CYCLE %d\n", i);
     print_state(state, data_count);
-
-    commit(state);
+    
+    commit_status = commit(state);
+    if(commit_status != 0) num_insn++;
+    if(commit_status == -1) break;
     writeback(state);
     execute(state);
     memory_disambiguation(state);
