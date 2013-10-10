@@ -60,7 +60,7 @@ printf("error_info : commit not returning as expected\n");
 
 void
 writeback(state_t *state) {
-int i, tag;
+int i, tag, isTaken;
 //Integer writeback
 for(i = 0; i < state->wb_port_int_num; i++)
 {
@@ -82,6 +82,22 @@ for(i = 0; i < state->wb_port_fp_num; i++)
       register_writeback(state, tag);
       state->wb_port_fp[i].tag = -1; 
    }
+}
+
+//Control instructions writeback
+if(state->branch_tag != -1)
+{
+   tag = state->branch_tag;
+   state->ROB[tag].completed = TRUE;
+   state->fetch_lock = FALSE;
+   //If branch is taken
+   isTaken = state->ROB[tag].result.integer.w;
+   if(isTaken)
+   {
+      state->pc = state->ROB[tag].result.integer.w; //Copying target to pc
+      state->if_id.instr = 0; //Squashing the instruction in if_id and setting it equal to NOP
+   }
+   state->branch_tag = -1;
 }
 }
 
@@ -666,11 +682,13 @@ case FU_GROUP_BRANCH:
         break;
      case OPERATION_BEQZ:
         (*result).integer.w = (operand1.integer.w == 0) ? TRUE : FALSE;
-        (*target).integer.w = (operand1.integer.w == 0) ? pc + operand2.integer.w + 4 : pc + 4;
+        //(*target).integer.w = (operand1.integer.w == 0) ? pc + operand2.integer.w + 4 : pc + 4;
+        (*target).integer.w = pc + operand2.integer.w + 4;
         break;
      case OPERATION_BNEZ:
         (*result).integer.w = (operand1.integer.w != 0) ? TRUE : FALSE;
-        (*target).integer.w = (operand1.integer.w != 0) ? pc + operand2.integer.w + 4 : pc + 4;
+        //(*target).integer.w = (operand1.integer.w != 0) ? pc + operand2.integer.w + 4 : pc + 4;
+        (*target).integer.w = pc + operand2.integer.w + 4;
         break;
   }
   break;
