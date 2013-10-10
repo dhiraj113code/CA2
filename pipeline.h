@@ -10,6 +10,7 @@
 #define FALSE 0
 #define BIG_ENDIAN_MACHINE 1
 #define LITTLE_ENDIAN_MACHINE 0
+//#define MACHINE_TYPE BIG_ENDIAN_MACHINE
 #define MACHINE_TYPE LITTLE_ENDIAN_MACHINE
 #define DEBUG 0
 
@@ -132,3 +133,4 @@ extern void func_mem_exec(int, state_t *);
 extern int memory_fetch_int(unsigned long, state_t *);
 extern void write_regfile(int, state_t *);
 extern void update_reg(int, int, operand_t,  state_t *, int);
+extern void write_mem_int(int, int, state_t *);

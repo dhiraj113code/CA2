@@ -829,27 +829,11 @@ case OPERATION_STORE:
 }
 }
 
-
-int memory_fetch_int(unsigned long pc, state_t *state)
-{
-int data; 
-if(MACHINE_TYPE == BIG_ENDIAN_MACHINE)
-{
-   data = (state->mem[pc] << 24) | (state->mem[pc+1] << 16) | (state->mem[pc+2] << 8) | (state->mem[pc+3]);
-}
-else if(MACHINE_TYPE == LITTLE_ENDIAN_MACHINE)
-{
-   data = (state->mem[pc]) | (state->mem[pc+1] << 8) | (state->mem[pc+2] << 16) | (state->mem[pc+3] << 24);
-}
-return data;
-}
-
-
 void write_regfile(int ROB_entry, state_t *state)
 {
 int instr = state->ROB[ROB_entry].instr;
 const op_info_t *op_info;
-int use_imm, rd, isINT;
+int use_imm, rd, isINT, mem_addr;
 op_info = decode_instr(instr, &use_imm);
 operand_t result = state->ROB[ROB_entry].result;
 switch(op_info->fu_group_num)
@@ -865,11 +849,17 @@ case FU_GROUP_DIV:
   update_reg(rd, ROB_entry, result, state, FALSE);
   break;
 case FU_GROUP_MEM:
-  if(op_info->operation == OPERATION_LOAD)
+  switch(op_info->operation)
   {
+  case OPERATION_LOAD:
      rd = FIELD_R2(instr);
      isINT = (op_info->data_type == DATA_TYPE_W) ? TRUE : FALSE;
      update_reg(rd, ROB_entry, result, state, isINT);
+     break;
+  case OPERATION_STORE:
+     mem_addr = state->ROB[ROB_entry].target.integer.w;
+     write_mem_int(mem_addr, result.integer.w, state);
+     break;
   }
   break;
 case FU_GROUP_BRANCH:
@@ -901,3 +891,35 @@ else
 return ;
 }
 
+int memory_fetch_int(unsigned long pc, state_t *state)
+{
+int data;
+if(MACHINE_TYPE == BIG_ENDIAN_MACHINE)
+{
+   data = (state->mem[pc] << 24) | (state->mem[pc+1] << 16) | (state->mem[pc+2] << 8) | (state->mem[pc+3]);
+}
+else if(MACHINE_TYPE == LITTLE_ENDIAN_MACHINE)
+{
+   data = (state->mem[pc]) | (state->mem[pc+1] << 8) | (state->mem[pc+2] << 16) | (state->mem[pc+3] << 24);
+}
+return data;
+}
+
+void write_mem_int(int mem_addr, int result, state_t *state)
+{
+if(MACHINE_TYPE == BIG_ENDIAN_MACHINE)
+{
+   state->mem[mem_addr] = (char)((result & 0xff000000) >> 24);
+   state->mem[mem_addr + 1] = (char)((result & 0x00ff0000) >> 16);
+   state->mem[mem_addr + 2] = (char)((result & 0x0000ff00) >> 8);
+   state->mem[mem_addr + 3] = (char)(result & 0x000000ff) ;
+
+}
+else if(MACHINE_TYPE == LITTLE_ENDIAN_MACHINE)
+{
+   state->mem[mem_addr + 3] = (char)((result & 0xff000000) >> 24);
+   state->mem[mem_addr + 2] = (char)((result & 0x00ff0000) >> 16);
+   state->mem[mem_addr + 1] = (char)((result & 0x0000ff00) >> 8);
+   state->mem[mem_addr] = (char)(result & 0x000000ff) ;
+}
+}
