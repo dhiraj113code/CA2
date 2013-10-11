@@ -404,7 +404,7 @@ case FU_GROUP_MEM:
    read_reg(r1, state, IQ_index, CQ_index, TRUE, TRUE, 1);
    set_imm_operand(imm, state, IQ_index, 2);
    //setting the Conflict Queue(CQ) tag
-   state->CQ[CQ_index].tag1 = ROB_index + ROB_SIZE; //bullshit
+   state->CQ[CQ_index].tag1 = ROB_index + ROB_SIZE;
    switch(op_info->operation)
    {
    case OPERATION_LOAD:
@@ -555,7 +555,7 @@ case FU_GROUP_INT:
    if(issue_fu_int(state->fu_int_list, tag, isbranch, islink) != -1) return 0;
    break;
 case FU_GROUP_MEM:
-   tag = tag + ROB_SIZE; //bullshit
+   tag = tag + ROB_SIZE;
    isbranch = FALSE;
    islink = FALSE;
    if(issue_fu_int(state->fu_int_list, tag, isbranch, islink) != -1) return 0;
@@ -716,7 +716,11 @@ void register_writeback(state_t *state, int tag)
 {
 if( tag < 0 ) printf("error_info : register_writeback called with tag < 0  or tag > 64\n");
 
-int i, ROB_index;
+int ROB_index, CQ_head, CQ_tail, CQ_curr, IQ_curr, IQ_head, IQ_tail;
+CQ_head = state->CQ_head;
+CQ_tail = state->CQ_tail;
+IQ_head = state->IQ_head;
+IQ_tail = state->IQ_tail;
 
 if(tag < ROB_SIZE)
 {
@@ -724,42 +728,49 @@ if(tag < ROB_SIZE)
    state->ROB[tag].completed = TRUE;
 
    //Forwarding the results to IQ and CQ
-   for(i = 0; i < IQ_SIZE; i++)
+   IQ_curr = IQ_head;
+   while(IQ_curr != IQ_tail)
    {
-      if(state->IQ[i].tag1 == tag)
+      if(state->IQ[IQ_curr].tag1 == tag)
       {
-         state->IQ[i].tag1 = -1;
-         state->IQ[i].operand1 = state->ROB[tag].result;
+         state->IQ[IQ_curr].tag1 = -1;
+         state->IQ[IQ_curr].operand1 = state->ROB[tag].result;
          
       }
-      if(state->IQ[i].tag2 == tag)
+      if(state->IQ[IQ_curr].tag2 == tag)
       {
-         state->IQ[i].tag2 = -1;
-         state->IQ[i].operand2 = state->ROB[tag].result;
+         state->IQ[IQ_curr].tag2 = -1;
+         state->IQ[IQ_curr].operand2 = state->ROB[tag].result;
       }
+      IQ_curr = (IQ_curr + 1)%IQ_SIZE;
    }
-   for(i = 0; i < CQ_SIZE; i++)
+
+   CQ_curr = CQ_head;
+   while(CQ_curr != CQ_tail)
    {
-      if(state->CQ[i].tag2 == tag)
+      if(state->CQ[CQ_curr].tag2 == tag)
       {
-         state->CQ[i].tag2 = -1;
-         state->CQ[i].result = state->ROB[tag].result;
+         state->CQ[CQ_curr].tag2 = -1;
+         state->CQ[CQ_curr].result = state->ROB[tag].result;
       }
+      CQ_curr = (CQ_curr + 1)%CQ_SIZE;
    }
 }
 else
 {
     //Writing the results to CQ operand 1
     ROB_index = tag - ROB_SIZE;
-    for(i = 0; i < CQ_SIZE; i++)
+    CQ_curr = CQ_head;
+    while(CQ_curr != CQ_tail)
     {
-       if(state->CQ[i].ROB_index == ROB_index)
+       if(state->CQ[CQ_curr].ROB_index == ROB_index)
        {
-          if(DEBUG) printf("debug_info : CQ entry which matchces the tag = %d is i = %d\n", tag, i);
-          state->CQ[i].tag1 = -1;
-          state->CQ[i].address = state->ROB[ROB_index].target;
+          if(DEBUG) printf("debug_info : CQ entry which matchces the tag = %d is CQ_curr = %d\n", tag, CQ_curr);
+          state->CQ[CQ_curr].tag1 = -1;
+          state->CQ[CQ_curr].address = state->ROB[ROB_index].target;
           break;
        }
+       CQ_curr = (CQ_curr + 1)%CQ_SIZE;
     }
 }
 }
@@ -792,7 +803,6 @@ op_info = decode_instr(instr, &use_imm);
 ROB_index = state->CQ[CQ_index].ROB_index;
 isStore = state->CQ[CQ_index].store;
 isFloatMem = (op_info->data_type == DATA_TYPE_F) ? TRUE : FALSE;
-//int tag = ROB_index - ROB_SIZE; //bullshit
 //Issue the Load instruction after checking for available memory units
 if(issue_fu_mem(state->fu_mem_list, ROB_index, isFloatMem, isStore) != -1)
    return 0;
