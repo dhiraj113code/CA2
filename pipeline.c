@@ -224,6 +224,7 @@ int ROB_index, IQ_index, CQ_index;
 int ROB_full = FALSE, IQ_full = FALSE, CQ_full = FALSE;
 unsigned long pc;
 int isHALT = FALSE, isNOP = FALSE, isCONTROL = FALSE, isMEMORY = FALSE, isSTORE = FALSE;
+int buffersFull = FALSE;
 
 instr = state->if_id.instr;
 pc = state->if_id.pc;
@@ -256,14 +257,20 @@ if( CQ_head == (CQ_tail + 1)%CQ_SIZE ) CQ_full = TRUE;
 
 //Need to stall the pipeline if ROB, IQ or CQ are full.
 //This is no longer happening.
-if(ROB_full) return 0;
-if(!ROB_full && IQ_full)
+if(ROB_full) buffersFull = TRUE;
+else if(!ROB_full && IQ_full)
 {
-   if(!isHALT) return 0;
+   if(!isHALT) buffersFull = TRUE;
 }
-if(!ROB_full && !IQ_full && CQ_full)
+else if(!ROB_full && !IQ_full && CQ_full)
 {
-   if(isMEMORY) return 0;
+   if(isMEMORY) buffersFull = TRUE;
+}
+
+if(buffersFull)
+{
+   if(DEBUG) printf("debug_info : One of ROB, IQ, CQ is full, locking fetch\n");
+   return -1;
 }
 
 //Updating the Re-Order Buffer(ROB)
@@ -305,6 +312,7 @@ if(isMEMORY)
 register_rename(instr, state, IQ_index, CQ_index);
 
 if(isCONTROL) state->fetch_lock = TRUE;
+return 0;
 }
 
 

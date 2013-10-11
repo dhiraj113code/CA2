@@ -36,7 +36,7 @@ main(int argc, char *argv[]) {
   int data_count;
   int commit_ret, dispatch_ret;
   int num_insn, i;
-  int commit_status;
+  int commit_status, areBuffersFull = 0;
 
   parse_args(argc, argv);
   state = state_create(&data_count, bin_file, fu_file, wbpi, wbpf);
@@ -64,8 +64,8 @@ main(int argc, char *argv[]) {
     memory_disambiguation(state);
     issue(state);
     if (!(state->fetch_lock)) {
-      dispatch(state);
-      fetch(state);
+      areBuffersFull = dispatch(state);
+      if(areBuffersFull != -1) fetch(state);
     }
   }
 
