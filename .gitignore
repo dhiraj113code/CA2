@@ -13,11 +13,11 @@
 
 # Executables
 *.exe
-*.out
+#*.out
 *.app
 tags
 mipsim
 asm
 *.swp
 *.bin
-*.log
+#*.log
