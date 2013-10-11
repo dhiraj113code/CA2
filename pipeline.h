@@ -134,3 +134,4 @@ extern int memory_fetch_int(unsigned long, state_t *);
 extern void write_regfile(int, state_t *);
 extern void update_reg(int, int, operand_t,  state_t *, int);
 extern void write_mem_int(int, int, state_t *);
+extern void set_operand_ready(state_t *, int, int);

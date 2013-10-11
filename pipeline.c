@@ -94,7 +94,7 @@ if(state->branch_tag != -1)
    isTaken = state->ROB[tag].result.integer.w;
    if(isTaken)
    {
-      state->pc = state->ROB[tag].result.integer.w; //Copying target to pc
+      state->pc = state->ROB[tag].target.integer.w; //Copying target to pc
       state->if_id.instr = 0; //Squashing the instruction in if_id and setting it equal to NOP
    }
    state->branch_tag = -1;
@@ -316,6 +316,7 @@ fetch(state_t *state) {
 unsigned long pc = state->pc;
 int i, instr;
 int machine_type = LITTLE_ENDIAN_MACHINE;
+if(pc%4 != 0) printf("error_info : pc not a multiple of 4, pc = %lu\n", pc);
 instr = memory_fetch_int(pc, state);
 state->if_id.instr = instr;
 state->if_id.pc = pc;
@@ -368,25 +369,32 @@ case FU_GROUP_BRANCH:
    switch(op_info->operation)
    {
    case OPERATION_J:
+      set_operand_ready(state, IQ_index, 1);
+      set_operand_ready(state, IQ_index, 2);
       break;
    case OPERATION_JAL:
+      set_operand_ready(state, IQ_index, 1);
+      set_operand_ready(state, IQ_index, 2);
       write_reg(31, state, IQ_index, TRUE);
       break;
    case OPERATION_JR:
       r1 = FIELD_R1(instr);
       read_reg(r1, state, IQ_index, CQ_index, TRUE, TRUE, 1);
+      set_operand_ready(state, IQ_index, 2);
       break;
    case OPERATION_JALR:
       r1 = FIELD_R1(instr);
       read_reg(r1, state, IQ_index, CQ_index, TRUE, TRUE, 1);
+      set_operand_ready(state, IQ_index, 2);
       write_reg(31, state, IQ_index, TRUE);
       break;
    case OPERATION_BEQZ:
    case OPERATION_BNEZ:
       r1 = FIELD_R1(instr);
-      imm = FIELD_IMM(instr);
+      //imm = FIELD_IMM(instr);
       read_reg(r1, state, IQ_index, CQ_index, TRUE, TRUE, 1);
-      set_imm_operand(imm, state, IQ_index, 2);
+      set_operand_ready(state, IQ_index, 2);
+      //set_imm_operand(imm, state, IQ_index, 2);
       break; 
    }
    break;
@@ -599,6 +607,7 @@ result = &state->ROB[ROB_index].result;
 target = &state->ROB[ROB_index].target;
 
 int offset = FIELD_OFFSET(instr); 
+int imm;
 
 switch(op_info->fu_group_num)
 {
@@ -663,7 +672,7 @@ case FU_GROUP_BRANCH:
   switch(op_info->operation)
   {
      case OPERATION_J:
-        (*result).integer.w = TRUE;
+        (*result).integer.w = TRUE; //3; //bullshit
         (*target).integer.w = pc + offset + 4;
         break;
      case OPERATION_JR:
@@ -681,14 +690,18 @@ case FU_GROUP_BRANCH:
         //What about storing the value of pc in r31.
         break;
      case OPERATION_BEQZ:
+        imm = FIELD_IMM(instr);
+        (*target).integer.w = pc + imm + 4;
         (*result).integer.w = (operand1.integer.w == 0) ? TRUE : FALSE;
         //(*target).integer.w = (operand1.integer.w == 0) ? pc + operand2.integer.w + 4 : pc + 4;
-        (*target).integer.w = pc + operand2.integer.w + 4;
+        //(*target).integer.w = pc + operand2.integer.w + 4;
         break;
      case OPERATION_BNEZ:
+        imm = FIELD_IMM(instr);
+        (*target).integer.w = pc + imm + 4;
         (*result).integer.w = (operand1.integer.w != 0) ? TRUE : FALSE;
         //(*target).integer.w = (operand1.integer.w != 0) ? pc + operand2.integer.w + 4 : pc + 4;
-        (*target).integer.w = pc + operand2.integer.w + 4;
+        //(*target).integer.w = pc + operand2.integer.w + 4;
         break;
   }
   break;
@@ -800,49 +813,35 @@ int rd = FIELD_R2(instr);
 int address = state->CQ[CQ_entry].address.integer.w;
 int i, local_instr, local_use_imm, search = FALSE;
 
+
 //address = state->ROB[ROB_index].target.integer.w;
 
 switch(op_info->operation)
 {
 case OPERATION_LOAD:
-   switch(op_info->data_type)
+   //Go and check if any issued store is present in the reorder buffer before going to memory to fetch
+   for(i = 0; i < ROB_index; i++)
    {
-   case DATA_TYPE_W:
-      //Go and check if any issued store is present in the reorder buffer before going to memory to fetch
-      for(i = 0; i < ROB_index; i++)
+      local_op_info = decode_instr(local_instr, &local_use_imm);
+      if(local_op_info->operation == OPERATION_STORE)
       {
-         local_op_info = decode_instr(local_instr, &local_use_imm);
-         if(local_op_info->operation == OPERATION_STORE)
+         if(state->ROB[i].completed)
          {
-            if(state->ROB[i].completed)
+            if(state->ROB[i].target.integer.w == address)
             {
-               if(state->ROB[i].target.integer.w == address)
-               {
-                  search = TRUE;
-                  state->ROB[ROB_index].result = state->ROB[i].result;
-               }
-                
+               search = TRUE;
+               state->ROB[ROB_index].result = state->ROB[i].result;
             }
-            else
-               printf("error_info : Load executing before a prior incomplete store\n"); 
+             
          }
+         else
+            printf("error_info : Load executing before a prior incomplete store\n"); 
       }
-      if(!search) state->ROB[ROB_index].result.integer.w = memory_fetch_int(address, state); 
-      break;
-   case DATA_TYPE_F:
-      break;
    }
+   if(!search)  state->ROB[ROB_index].result.integer.w = memory_fetch_int(address, state); 
    break;
-   
 case OPERATION_STORE:
-   switch(op_info->data_type)
-   {
-   case DATA_TYPE_W:
-      state->ROB[ROB_index].result = state->CQ[CQ_entry].result;
-      break;
-   case DATA_TYPE_F:
-      break;
-   }
+   state->ROB[ROB_index].result = state->CQ[CQ_entry].result;
    break;
 }
 }
@@ -940,4 +939,24 @@ else if(MACHINE_TYPE == LITTLE_ENDIAN_MACHINE)
    state->mem[mem_addr + 1] = (char)((result & 0x0000ff00) >> 8);
    state->mem[mem_addr] = (char)(result & 0x000000ff) ;
 }
+}
+
+
+void set_operand_ready(state_t *state, int IQ_index, int op)
+{
+switch(op)
+{
+case 1:
+   state->IQ[IQ_index].tag1 = -1;
+   //state->IQ[IQ_index].operand1.integer.w = 0;
+   break;
+case 2:
+   state->IQ[IQ_index].tag2 = -1;
+   //state->IQ[IQ_index].operand2.integer.w = 0;
+   break;
+default:
+   printf("error_info : op values to set_operand_ready should only be 1 or 2\n");
+   break;
+}
+return;
 }
