@@ -665,7 +665,15 @@ case FU_GROUP_INT:
   }
   break;
 case FU_GROUP_ADD:
-  (*result).flt = operand1.flt + operand2.flt;
+  switch(op_info->operation)
+  {
+  case OPERATION_ADD: 
+     (*result).flt = operand1.flt + operand2.flt;
+     break;
+  case OPERATION_SUB:
+     (*result).flt = operand1.flt - operand2.flt;
+     break;
+  }
   break;
 case FU_GROUP_MULT:
   (*result).flt = operand1.flt * operand2.flt;
